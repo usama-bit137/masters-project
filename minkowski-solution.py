@@ -1,20 +1,26 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jun 28 21:26:02 2022
+
+@author: Usama
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-from numpy.random import randint
-from scipy import integrate
+import random as rnd
 
+plt.rcParams["font.family"] = "Times New Roman"
+plt.rcParams["axes.edgecolor"] = "black"
+plt.rcParams["axes.linewidth"] = 2.50
 % matplotlib
 qt
 
-fig1, ax1 = plt.subplots(1)
-fig2, ax4 = plt.subplots(1)
-fig3, (ax5, ax6) = plt.subplots(1, 2)
+fig1, (ax1, ax5, ax2) = plt.subplots(3, 1)
+fig2, (ax3, ax4) = plt.subplots(1, 2)
+fig3, ax6 = plt.subplots(1)
+fig4, ax7 = plt.subplots(1)
 
-l = 1
-
-alpha = 10
-N = 8
+fig1.tight_layout()
 
 
 def U(x, E):
@@ -49,10 +55,10 @@ def Newton_Raphson(x, E, n):
     n = the number of iterations.
 
     This is the root finding algorithm
-    which allows us to find the stationary points
+    which allows us to find the maximum value
     of our potential - the true vacuum. Keeping the
     number of iterations high brings us very close
-    to the vacua.
+    to an undershoot.
     """
 
     for i in range(n):
@@ -60,7 +66,11 @@ def Newton_Raphson(x, E, n):
     return x
 
 
-def RK_22(x0, t0, v0, t_range, dt, x_range, E):
+def dSdt(x, t, v, E):
+    return 2 * (np.pi) ** 2 * (t) ** 3 * (0.5 * v ** 2 + U_corr(x, E))
+
+
+def RK_22(x0, t0, v0, t_range, x_range, E):
     """
     x0 = initial position
     t0 = initial time
@@ -74,17 +84,20 @@ def RK_22(x0, t0, v0, t_range, dt, x_range, E):
     purpose of the if statement is to basically cutoff
     the solution if it overshoots.
     """
+
     # Boxes to fill:
     xh_total = []
     t_total = []
     v_total = []
 
     while t0 < t_range:
+
         xh = x0 + dt * v0 / 2
+
         if abs(x0) > x_range:
             break
 
-        vh = v0 + ODE(x0, v0, t0, E) * dt / 2
+        vh = v0 + ODE(x0, t0, t0, E) * dt / 2
         x0 += dt * vh
         v0 += dt * ODE(xh, vh, t0 + dt / 2, E)
         t0 += dt
@@ -93,188 +106,168 @@ def RK_22(x0, t0, v0, t_range, dt, x_range, E):
         v_total.append(vh)
         xh_total.append(xh)
         t_total.append(t0)
+
     # Fewer complications:
     return np.array([t_total, xh_total, v_total])
 
 
-def IntBisec(a_u, a_o, E, N):
+def IntBisec(a_u, a_o, a_mid, E, N):
     for i in range(N):
+
+        Phi_u = RK_22(a_u, t0, v0, t_range, x_range, E)
         amid = 0.5 * (a_u + a_o)
-        Phi_mid = RK_22(amid, t0, v0, t_range, dt, x_range, E)
-        if Phi_mid[-1, -1] < 0:
+
+        Phi_mid = RK_22(amid, t0, v0, t_range, x_range, E)
+
+        if abs(Phi_u[0, -1] - Phi_mid[0, -1]) < 1e-15:
             a_u = amid
         else:
             a_o = amid
     return amid
 
 
-def dSdxi(x, t, v, E):
-    return 2 * np.pi ** 2 * t ** 3 * (0.5 * v ** 2 + U_corr(x, E))
+# Fundamental values we require:
+N = 10
+E = np.linspace(0.04, 0.08, N)
 
-
-# Parameters:
-E = np.arange(0.01, 0.09, 0.01)
-
-# Initial conditions for the Runge-Kutta algorithm:
+# Initial conditions for the Runge-Kutta algorithm.
 t0 = 1e-15
 v0 = 0
 dt = 0.1
 x_range = 2
-t_range = 50
+t_range = 100
 
-# Initial condition:
-"""________________________Forward Solution:________________________"""
-
-m = 10000
-
-S_scipy = []
+S = []
 R = []
-E_c = []
+A_mid = []
 
-for n in tqdm(range(len(E))):
-    a_beg = Newton_Raphson(-2, E[n], 100)
-    a_end = Newton_Raphson(2, E[n], 100)
-    a_HM = Newton_Raphson(0, E[n], 100)
+for j in range(N):
+    a_o = Newton_Raphson(-2, E[j], 2)
+    print('An overshoot value:' + str(a_o))
 
-    a_forward = np.linspace(a_beg, -1, m)
-    index_o = []
+    a_u = Newton_Raphson(-2, E[j], 100)
+    print('An undershoot value:' + str(a_u))
 
-    for j in range(len(a_forward)):
-        Phi_mid_for = RK_22(a_forward[j], t0, v0, t_range, dt, x_range, E[n])
+    """The mid-point of the overshoot and the undershoot:"""
+    a_mid = 0.5 * (a_o + a_u)
+    a_mid = IntBisec(a_u, a_o, a_mid, E[j], 100)
+    A_mid.append(a_mid)
+    Phi_mid = RK_22(a_mid, t0, v0, t_range, x_range, E[j])
 
-        # ax1.plot(Phi_mid_for[0,:], Phi_mid_for[1,:])
-
-        # Collecting all the boundary overshoot:
-        if Phi_mid_for[-1, -1] > 0:
-            index_o.append(j)
-
-    # Box for just crossovers:
-    index_o_cross = []
-
-    # Here I am trying to find the values for a_forward for which neighbouring
-    # solutions are not of the same type-- this will tell us if there's a sweetspot:
-
-    for i in np.arange(0, len(index_o) - 1):
-        if index_o[i + 1] != index_o[i] + 1:
-            index_o_cross.append(index_o[i])
-            index_o_cross.append(index_o[i + 1])
-
-    """_________________________________________________________________________"""
-
-    a_best = []
-    for l in range(len(index_o_cross)):
-        # For the neighbouring values the
-        if l % 2 == 0:
-            a_o = a_forward[index_o_cross[l]]
-            a_u = a_forward[index_o_cross[l] + 1]
-            a_bestf = IntBisec(a_u, a_o, E[n], 1000)
-            Phi_u = RK_22(a_u, t0, v0, t_range, dt, x_range, E[n])
-            Phi_o = RK_22(a_o, t0, v0, t_range, dt, x_range, E[n])
-            Phi_bestf = RK_22(a_bestf, t0, v0, t_range, dt, x_range, E[n])
-        else:
-            a_o = a_forward[index_o_cross[l]]
-            a_u = a_forward[index_o_cross[l] - 1]
-            a_bestf = IntBisec(a_u, a_o, E[n], 1000)
-            Phi_u = RK_22(a_u, t0, v0, t_range, dt, x_range, E[n])
-            Phi_o = RK_22(a_o, t0, v0, t_range, dt, x_range, E[n])
-            Phi_bestf = RK_22(a_bestf, t0, v0, t_range, dt, x_range, E[n])
-
-        a_best.append(a_bestf)
-
-    if len(a_best) == 0:
-        continue
-
-    Phi_bestf = RK_22(a_best[0], t0, v0, t_range, dt, x_range, E[n])
-
-    """_________________________________________________________________________"""
-
-    x = Phi_bestf[1, :]
-    v = Phi_bestf[-1, :]
-    t = Phi_bestf[0, :]
+    # Inputs for the action:
+    t = Phi_mid[0, :]
+    x = Phi_mid[1, :]
+    v = Phi_mid[-1, :]
 
     # Removing the waste end:
-    ax1.plot(Phi_bestf[0, :], Phi_bestf[1, :], linewidth=2, label='$E$ = ' + str(E[n]))
-
     for l in np.arange(0, len(t) - 1):
-        if np.round(x[l]) == 40:
-            t_red = t[:l]
-            x_red = x[:l]
-            v_red = v[:l]
+        if np.round(Phi_mid[0, l]) == 40:
+            n = round(l)
+            t_red = t[:n]
+            x_red = x[:n]
+            v_red = v[:n]
             break
 
-    times = []
+    dSdt1 = 2 * (np.pi) ** 2 * (t_red) ** 3 * (0.5 * (v_red) ** 2 + U_corr(x_red, E[j]))
 
-    """Calculating the radius for this bounce"""
+    M = len(dSdt1)
+    S_integrated = (0.5 / M) * (t_red[0] + t_red[1]) * (dSdt1[0] + dSdt1[0])
+
+    for m in range(M - 1):
+        S_integrated += (0.5 / M) * (t_red[0] + t_red[1]) * (dSdt1[m])
+
+    S.append(S_integrated)
+
+    # Finding the index of intersection:
     for k in np.arange(0, len(x) - 1):
-        if np.sign(x_red[k]) != np.sign(x_red[k + 1]):
-            R_i = 0.5 * (t_red[k] + t_red[k + 1])
-            times.append(k)
+        if np.sign(Phi_mid[1, k]) != np.sign(Phi_mid[1, k + 1]):
+            m = round(k)
             break
 
-    print(times)
-
-    if len(times) != 1:
-        continue
-
-    dSdt1 = dSdxi(x_red, t_red, v_red, E[n])
-
-    Phi_fv = a_end * np.ones(l)
-    Phi_fv_vel = np.zeros(l)
-    dSdt_fv = dSdxi(Phi_fv, t_red, Phi_fv_vel, E[n])
-
-    B_fv = integrate.cumtrapz(t_red, dSdt_fv)
+    R_i = 0.5 * (Phi_mid[0, m] + Phi_mid[0, m + 1])
     R.append(R_i)
-    E_c.append(E[n])
 
-    """Calculating the bounce"""
+    w = 2
 
-    S_cdl_scipy = integrate.cumtrapz(t_red, dSdt_fv, initial=0)
-    S_scipy.append(S_cdl_scipy)
+    x_1 = np.linspace(-1.5, 1.5, 100)
+    ax1.plot(t, x, linewidth=w)
 
-    ax1.axvline(x=R_i / alpha, color='red', linestyle='--', label='Radius')
-
-    ax1.axhline(y=a_end, color='b', linestyle='--', label='$\phi_{fv}$ = ' + str(round(a_end, 6)))
-    ax1.axhline(y=a_beg, color='b', linestyle='--', label='$\phi_{tv}$ = ' + str(round(a_beg, 6)))
-    ax1.axhline(y=a_HM, color='b', linestyle='--', label='$\phi_{HM}$ = ' + str(round(a_beg, 6)))
+    ax5.plot(Phi_mid[0, 1:], Phi_mid[-1, 1:], linewidth=w, label='$E$ = ' + str(round(E[j], 3)))
+    ax2.plot(t_red, dSdt1, linewidth=w)
+    ax6.plot(x_1, U_corr(x_1, E[j]), linewidth=3, label='$E$ = ' + str(round(E[j], 2)))
+    print('ε = ' + str(E[j]))
 
 R_1 = np.array(R)
-S_1 = np.array(S_scipy)
-E_1 = np.array(E_c)
+S_1 = np.array(S)
 
 R_ln = np.log(R_1)
 S_ln = np.log(S_1)
-E_ln = np.log(E_c)
+E_ln = np.log(E)
 
 # Checking the gradients of these lines to see if they're in agreement with
 # Coleman's Thin-wall approximation:
 
-R_polyfit = np.polyfit(E_c, R_1, 1)
-S_polyfit = np.polyfit(E_c, S_1, 1)
+R_polyfit = np.polyfit(E_ln, R_ln, 1)
+S_polyfit = np.polyfit(E_ln, S_ln, 1)
 
 m_R = R_polyfit[0]
 m_S = S_polyfit[0]
 
-ax1.plot(Phi_bestf[0, :] / alpha, 1 / np.tan(Phi_bestf[0, :] / alpha), color='orange', linestyle='--',
-         label='drag term')
-ax4.plot(Phi_bestf[1, :][:-2], Phi_bestf[-1, :][:-2], 'red', label='CdL Orbit')
-ax4.axvline(x=a_beg, color='b', linestyle='--', label='$\phi_{tv}$ = ' + str(round(a_beg, 6)))
-ax4.axvline(x=a_end, color='b', linestyle='--', label='$\phi_{fv}$ = ' + str(round(a_end, 6)))
-ax5.plot(E_1, R_1, '.')
-ax6.plot(E_1, S_1, '.')
+m_S_error = (3 - abs(m_S)) / 3
+m_R_error = 1 - abs(m_R)
 
-"""___________________________Finishing Touches_________________________"""
-ax1.set_ylabel('$\phi/a$', fontsize=20)
-ax1.set_xlabel('$\lambda^{1/2}a ξ$', fontsize=20)
-ax1.tick_params(axis='both', which='major', labelsize=20)
-ax1.set_ylim(a_beg - 1, 1.1)
-ax1.set_xlim(0, t_range / alpha)
-ax1.legend(fontsize=10)
+print('The average gradient of the log(R) vs. log(E) is: ' + str(m_R) + ' with error ' + str(m_R_error))
+print('The average gradient of the log(S) vs. log(E) is: ' + str(m_S) + ' with error ' + str(m_S_error))
 
-ax4.set_xlabel('$\phi(0)$', fontsize=20)
-ax4.set_ylabel('$B$', fontsize=20)
-ax4.set_xlim(a_beg - 0.1, a_end + 0.1)
-ax4.set_ylim(-5, 5)
-ax4.set_ylabel('$\dot{\phi}$', fontsize=20)
-ax4.set_xlabel('$\phi$', fontsize=20)
-ax4.legend(fontsize=10)
+s = 20
 
+"""________________________________Finishing_Touches________________________"""
+# Plots of derived action and radius:
+ax1.set_ylim(-1.5, 1.5)
+ax1.set_xlim(5, 30)
+ax1.set_ylabel('$x$', fontsize=s)
+
+ax2.set_xlim(5, 30)
+ax2.set_ylim(-5e4, 1e5)
+ax2.set_xlabel('$t$', fontsize=s)
+ax2.set_ylabel('$\dot{\widetilde{B}}$', fontsize=s)
+
+ax3.set_xlabel('log($E$)', fontsize=s)
+ax3.set_ylabel('log($\widetilde{B}$)', fontsize=s)
+ax3.plot(E_ln, S_ln, linewidth=2, label='<m> = ' + str(round(m_S, 3)))
+ax3.plot(E_ln, -3 * E_ln - 4.5, '--', linewidth=2, label='Thin-Wall Action')
+
+ax4.set_xlabel('log($E$)', fontsize=s)
+ax4.set_ylabel('log($\widetilde{R}$)', fontsize=s)
+ax4.plot(E_ln, R_ln, linewidth=2, label='<m> = ' + str(round(m_R, 3)))
+ax4.plot(E_ln, -E_ln, '--', linewidth=2, label='Thin-Wall Radius')
+
+ax5.set_xlim(5, 30)
+ax5.set_ylim(0, 0.6)
+ax5.set_ylabel('$\dot{x}$', fontsize=s)
+
+ax6.set_xlim(-1.5, 1.5)
+ax6.set_ylim(-0.2, 0.2)
+ax6.set_xlabel('$x$', fontsize=s)
+ax6.set_ylabel('$-\widetilde{U}$', fontsize=s)
+
+A_polyfit = np.polyfit(E, A_mid, 1)
+# ax7.plot(E, A_mid, 'o')
+# ax7.plot(E, A_polyfit[0]*E + A_polyfit[1])
+ax7.plot(R_1, S_1)
+
+# ax7.set_ylabel('$\widetilde{\phi}(0)$')
+# ax7.set_xlabel('$\widetilde{\epsilon}$')
+
+ax1.tick_params(axis='both', which='major', labelsize=s)
+ax2.tick_params(axis='both', which='major', labelsize=s)
+ax3.tick_params(axis='both', which='major', labelsize=s)
+ax4.tick_params(axis='both', which='major', labelsize=s)
+ax5.tick_params(axis='both', which='major', labelsize=s)
+ax6.tick_params(axis='both', which='major', labelsize=s)
+
+ax5.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=s)
+
+ax3.legend(fontsize=s)
+ax4.legend(fontsize=s)
+ax6.legend(fontsize=s)
