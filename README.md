@@ -8,4 +8,4 @@ We use python to develop a numerical methods such as Runge-Kutta to find the sol
 
 Suppose we have a scalar field $\phi$ in Minkowski spacetime. The Lagrangian for such a system is simple and well documented by any astute learner of Quantum Field Theory as, 
 
-$\mathcal{L} = \int d^4x(\frac{1}{2}\partial_{\mu}\partial^{\mu} - \frac{1}{2}m^2\phi^2)$. 
+$\mathcal{L} = \int d^4x(\frac{1}{2}\partial_{\mu}\phi\partial^{\mu}\phi - \frac{1}{2}m^2\phi^2)$. 
